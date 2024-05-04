@@ -22,16 +22,23 @@ class Bank:
         self.connection = None
         self.entry = None 
 
-    def connect(self):
+    def connect(self, db):
+        print(f'Connecting to {db}')
         self.db_engine = create_engine(self.connection_url, pool_recycle=3600)
         self.connection = self.db_engine.connect()
+
+        if passbank.connection != None:
+            print(f'{db} connection successful')
+        else: print(f'Error connecting to {db}')
+
         return self.connection
 
-    def find_account(self, account='') -> list:
+    def find_account(self, account=''):
         # Using parameterized query to avoid SQL injection
         query = '''SELECT account, username, password
                 FROM gucci.accounts
                 WHERE account = %s;'''
+        
         df = pd.read_sql(query, self.connection, params=(account,))
         self.entry = df
 
@@ -48,15 +55,16 @@ class Bank:
     def set_entry(self):
         self.entry = self.gather_info()
 
-    def upsert(self, schema='gucci', table_name='accounts', if_row_exists='update'):
+    def upsert(self, schema='accounts', table_name='userpws', if_row_exists='update'):
         self.entry = self.gather_info()
+
         if self.entry is not None:
             upsert(con=self.connection, df=self.entry, schema=schema, table_name=table_name, create_table=True, create_schema=True, if_row_exists=if_row_exists)
             self.connection.commit()  # Commit the transaction
         else:
             print("No entry to upsert.")
    
-    def get_mode(self):
+    def user_interface(self):
         '''
         Let user select if they wish to read or write information.
         '''
@@ -153,19 +161,14 @@ db_credentials = {
     'db_name': os.environ.get('db_name')
 }
 
-passbank = Bank(db_credentials)
-db = passbank.db_credentials['db_name']
+passbank = Bank(db_credentials) # Create instance of Bank using db_credentials
+db = passbank.db_credentials['db_name'] # Assign .env's db_name to db
 
-passbank.connect()
-print(f'Connecting to {db}')
-if passbank.connection != None:
-    print(f'{db} connection successful')
-else: print(f'Error connecting to {db}')
+passbank.connect(db)
 
-passbank.get_mode()
+passbank.user_interface() # 
 
-print('\n')
-print(passbank.entry)
+print(f'\n {passbank.entry}')
 
 passbank.connection.close()
 print(f'Disconnected from {db}')
