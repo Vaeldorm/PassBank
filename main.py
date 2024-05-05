@@ -2,6 +2,8 @@
 Goal: Learn to interface with postgres database, and (additionally) encrypt/decrypt data. Potential expansion: Create an API
 """
 
+
+from cryptography.fernet import Fernet
 import os
 import pandas as pd
 from pangres import upsert
@@ -36,18 +38,28 @@ class Bank:
     def find_account(self, account=''):
         # Using parameterized query to avoid SQL injection
         query = '''SELECT account, username, password
-                FROM gucci.accounts
+                FROM accounts.userpws
                 WHERE account = %s;'''
-        
         df = pd.read_sql(query, self.connection, params=(account,))
-        self.entry = df
+        
+        if not df.empty:
+            token = df['password'].iloc[0]  # Extracting the token from the DataFrame
+            f = Fernet(load_key())
+            decrypted_password = f.decrypt(token.encode()).decode()  # Decrypting the password and decoding from bytes to string
+            df['password'] = decrypted_password  # Replace the encrypted password with the decrypted one
+            df.index += 1
+            df.columns = ['Account', 'Username', 'Password']
+            self.entry = df
+        else:
+            print(f"No account found with the name '{account}'")
 
     def gather_info(self):
         account = get_account()
         username = get_username()
-        password = get_password()
+        token = get_password()
+        token_str = token.decode()
 
-        data = {'account': [account], 'username': [username], 'password': [password]}
+        data = {'account': [account], 'username': [username], 'password': [token_str]}
         df = pd.DataFrame(data)
         df.set_index('account', inplace=True)
         return df
@@ -80,6 +92,20 @@ class Bank:
                 #TODO print list of accounts
                 account = input('Which account do you wish to view? ')
                 self.find_account(account)
+
+def write_key(override = False):
+    if override == True:
+        key = Fernet.generate_key()
+        with open('key.key', 'wb') as key_file:
+            key_file.write(key)
+    else:
+        print('no authorization')
+
+def load_key():
+    file = open('key.key', 'rb')
+    key = file.read()
+    file.close()
+    return key
 
 def in_venv(): # Set up test file to move this function
     '''
@@ -136,6 +162,19 @@ def generate_password() -> str:
                 and any(c.isupper() for c in password)
                 and sum(c.isdigit() for c in password) >= 3):
             break
+
+    return password
+
+def encrypt_pw(password):
+    key = load_key()
+    f = Fernet(key)
+    token = f.encrypt(f'{password}'.encode()) # Encrypt password, creating a Fernet Token object
+    return token
+
+def decrypt_pw(token):
+    key = load_key()
+    f = Fernet(key)
+    password = f.decrypt(token) # Decrypt token, creating the original password
     return password
 
 def get_password():
@@ -148,7 +187,9 @@ def get_password():
             password = input('Password: ')
         case _:
             password = get_password()
-    return password
+
+    token = encrypt_pw(password)
+    return token
 
 # test = dev_interface()
 # print(test )
@@ -168,7 +209,7 @@ passbank.connect(db)
 
 passbank.user_interface() # 
 
-print(f'\n {passbank.entry}')
+print(f'\n{passbank.entry}')
 
 passbank.connection.close()
-print(f'Disconnected from {db}')
+print(f'\nDisconnected from {db}')
