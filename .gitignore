@@ -10,3 +10,5 @@ dev_journal.txt
 .idea/.gitignore
 .env
 key.key
+passbank.bat
+passbank.ps1
